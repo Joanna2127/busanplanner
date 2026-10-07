@@ -1,0 +1,1635 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>釜山五天四夜 10/07-10/11</title>
+    
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- SortableJS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+
+    <!-- Leaflet Map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Fonts & Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=Noto+Serif+TC:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'jp-bg': '#F9F9F4',       
+                        'jp-yellow': '#F3E5AB',   
+                        'jp-yellow-dark': '#E6D284',
+                        'jp-text': '#454545',     
+                        'jp-gray': '#9E9E9E',     
+                        'jp-accent': '#D4A373',
+                        'jp-red': '#E07A5F',
+                        'jp-blue': '#4A90E2',
+                        'metro-orange': '#F06A25', // 釜山地鐵 1 號線
+                        'metro-green': '#37B44A',  // 釜山地鐵 2 號線
+                        'naver-green': '#03C75A',
+                    },
+                    fontFamily: {
+                        sans: ['"Noto Sans TC"', 'sans-serif'],
+                        serif: ['"Noto Serif TC"', 'serif'],
+                    },
+                    boxShadow: {
+                        'soft': '0 4px 20px -2px rgba(0, 0, 0, 0.05)',
+                        'card': '0 2px 10px rgba(0, 0, 0, 0.03)',
+                        'float': '0 10px 30px rgba(0, 0, 0, 0.1)',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background-color: #E5E5E5;
+            font-family: 'Noto Sans TC', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        #app-container {
+            max-width: 480px;
+            margin: 0 auto;
+            background-color: #F9F9F4;
+            min-height: 100vh;
+            position: relative;
+            box-shadow: 0 0 30px rgba(0,0,0,0.1);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        .leaflet-popup-content-wrapper { border-radius: 12px; padding: 0; overflow: hidden; }
+        .leaflet-popup-content { margin: 10px; font-family: 'Noto Sans TC', sans-serif; font-size: 13px; color: #454545; }
+        
+        .sortable-ghost { opacity: 0.4; background: #F3E5AB; }
+        .sortable-drag { cursor: grabbing; }
+
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; }
+        
+        .slide-up-enter-active, .slide-up-leave-active { transition: transform 0.3s ease; }
+        .slide-up-enter-from, .slide-up-leave-to { transform: translateY(100%); }
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <div id="app-container">
+        
+        <!-- Header -->
+        <header class="bg-jp-bg pt-6 pb-2 px-4 sticky top-0 z-20 border-b border-gray-100 shadow-sm">
+            <!-- Top Row: Title, Weather, Tools -->
+            <div class="flex justify-between items-start mb-4">
+                <div @click="editTitle" class="flex-1 cursor-pointer">
+                    <h1 class="text-2xl font-serif font-bold text-jp-text tracking-wide leading-tight">{{ tripTitle }}</h1>
+                    <p class="text-xs text-jp-gray tracking-wider mt-1">10/07 - 10/11 ({{ tripDays }} 天)</p>
+                </div>
+                
+                <div class="flex items-center gap-2">
+                    <!-- Current Weather Widget (General) -->
+                    <div class="bg-white px-2 py-1.5 rounded-xl shadow-sm border border-gray-100 flex items-center gap-1.5 min-w-[60px] justify-center">
+                        <i v-if="weatherLoading" class="ph ph-spinner animate-spin text-jp-accent"></i>
+                        <div v-else class="flex items-center gap-1">
+                            <span class="text-[10px] text-gray-400">現在</span>
+                            <i :class="weatherIcon" class="text-lg text-jp-accent"></i>
+                            <span class="text-xs font-bold text-jp-text">{{ currentTemp }}°</span>
+                        </div>
+                    </div>
+
+                    <!-- Reset Data Button -->
+                    <button @click="confirmReset" class="bg-white p-2 rounded-full shadow-sm border border-gray-100 active:scale-95 transition-transform text-red-400" title="重置行程">
+                        <i class="ph ph-arrow-counter-clockwise text-xl"></i>
+                    </button>
+
+                    <!-- Currency Converter Toggle (Global) -->
+                    <button @click="showConverterModal = true" class="bg-white p-2 rounded-full shadow-sm border border-gray-100 active:scale-95 transition-transform text-blue-600" title="韓幣換算">
+                        <i class="ph ph-currency-circle-dollar text-xl"></i>
+                    </button>
+
+                    <!-- Shopping List -->
+                    <button @click="showShoppingModal = true" class="relative bg-white p-2 rounded-full shadow-sm border border-gray-100 active:scale-95 transition-transform" title="採買清單">
+                        <i class="ph ph-bag text-xl text-jp-text"></i>
+                        <span v-if="shoppingList.filter(i=>!i.done).length > 0" class="absolute -top-1 -right-1 bg-jp-red text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold">
+                            {{ shoppingList.filter(i=>!i.done).length }}
+                        </span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Date Selector with Weather Icons -->
+            <div class="flex space-x-2 overflow-x-auto no-scrollbar pb-2 snap-x">
+                <!-- Todo Tab -->
+                <div 
+                    @click="currentTab = 'todo'"
+                    class="snap-start shrink-0 flex flex-col items-center justify-center w-14 h-20 rounded-2xl transition-all duration-300 cursor-pointer border"
+                    :class="currentTab === 'todo' ? 'bg-jp-text text-white shadow-soft transform -translate-y-1 border-jp-text' : 'bg-white border-gray-100 text-gray-400'"
+                >
+                    <span class="text-xs font-medium">行前</span>
+                    <i class="ph ph-check-square mt-1 text-lg"></i>
+                </div>
+
+                <!-- Days -->
+                <div 
+                    v-for="(day, index) in tripData" 
+                    :key="index"
+                    @click="selectDate(index)"
+                    class="snap-start shrink-0 flex flex-col items-center justify-center w-14 h-20 rounded-2xl transition-all duration-300 cursor-pointer border relative"
+                    :class="(currentTab === 'schedule' && selectedDateIdx === index) ? 'bg-jp-yellow border-jp-yellow-dark text-jp-text shadow-soft transform -translate-y-1' : 'bg-white border-gray-100 text-gray-400'"
+                >
+                    <span class="text-[10px] font-medium uppercase">{{ getDayLabel(index) }}</span>
+                    <i :class="day.weather?.icon || 'ph-sun'" class="text-lg my-0.5" :class="(currentTab === 'schedule' && selectedDateIdx === index) ? 'text-jp-text' : 'text-jp-accent'"></i>
+                    <span class="text-lg font-bold font-serif">{{ index + 1 }}</span>
+                    <span class="text-[10px]">{{ getSimpleDate(index) }}</span>
+                    
+                    <div v-if="day.items.length > 0" class="absolute bottom-1.5 w-1 h-1 rounded-full bg-jp-accent"></div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-1 overflow-y-auto bg-jp-bg pb-24 relative no-scrollbar">
+            
+            <!-- View: TODO (With Categories) -->
+            <div v-if="currentTab === 'todo'" class="px-4 py-4 space-y-6">
+                <!-- 住宿卡片提示 -->
+                <div class="bg-amber-50/70 border border-amber-200/60 rounded-2xl p-4 shadow-card">
+                    <div class="flex items-center gap-2 text-jp-accent font-bold text-xs mb-1">
+                        <i class="ph-fill ph-bed text-base"></i>
+                        <span>行程住宿資訊 (TWOH Hotel)</span>
+                    </div>
+                    <div class="text-xs text-gray-700 space-y-1">
+                        <p class="font-bold text-sm text-jp-text">TWOH Hotel 凡一站</p>
+                        <p class="text-gray-500">入住時間：<b>17:00 Check-in</b> ｜ 退房時間：<b>最晚 12:00 Check-out</b>[cite: 2]</p>
+                        <p class="text-gray-500">地鐵交通：1號線 凡一站 (범일역) 步行約 2-5 分鐘[cite: 2]</p>
+                        <div class="pt-2 flex gap-2">
+                            <a href="https://map.naver.com/v5/search/TWOH%20Hotel" target="_blank" class="bg-naver-green text-white text-[11px] font-bold px-3 py-1.5 rounded-lg inline-flex items-center gap-1 shadow-sm">
+                                <span class="font-black text-xs">N</span> Naver Map 導航飯店
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-for="(items, category) in todoGroups" :key="category">
+                    <h3 class="text-xs font-bold text-gray-400 mb-2 pl-1 border-l-4 border-jp-yellow flex items-center justify-between">
+                        {{ category }}
+                        <span class="text-[10px] bg-gray-100 px-1.5 rounded-full text-gray-400">{{ items.filter(i=>i.done).length }}/{{ items.length }}</span>
+                    </h3>
+                    <div class="space-y-2">
+                        <div v-for="todo in items" :key="todo.id" class="flex items-center gap-3 bg-white p-3 rounded-xl shadow-card border border-gray-50 active:scale-[0.99] transition-transform group relative">
+                            <button @click="todo.done = !todo.done" class="text-xl shrink-0" :class="todo.done ? 'text-jp-accent' : 'text-gray-300'">
+                                <i :class="todo.done ? 'ph-fill ph-check-circle' : 'ph ph-circle'"></i>
+                            </button>
+                            <span :class="{'line-through text-gray-300': todo.done, 'text-jp-text': !todo.done}" class="flex-1 text-sm font-medium">{{ todo.text }}</span>
+                            <button @click="openTodoModal(todo)" class="text-gray-300 hover:text-blue-400 p-1">
+                                <i class="ph ph-pencil-simple"></i>
+                            </button>
+                            <button @click="removeTodo(todo.id)" class="text-gray-200 hover:text-red-400 p-1">
+                                <i class="ph ph-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex gap-2 pt-4 border-t border-dashed border-gray-200">
+                    <input v-model="newTodoText" @keyup.enter="addTodo" type="text" placeholder="新增待辦事項..." class="flex-1 bg-white border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-jp-yellow transition-colors shadow-sm">
+                    <button @click="addTodo" class="bg-jp-text text-white px-5 rounded-xl shadow-lg active:scale-95 transition-transform"><i class="ph-bold ph-plus"></i></button>
+                </div>
+                <div class="h-8"></div>
+            </div>
+
+            <!-- View: Schedule -->
+            <div v-else-if="currentTab === 'schedule'" class="px-4 py-4 space-y-4">
+                <div class="flex justify-between items-end mb-2">
+                    <div>
+                        <h2 class="text-lg font-medium text-jp-text">
+                            <span class="border-b-4 border-jp-yellow/50 pb-1">{{ getFullDate(selectedDateIdx) }} 行程</span>
+                        </h2>
+                        <p class="text-xs text-gray-400 mt-1.5 font-medium">{{ dayThemes[selectedDateIdx] }}</p>
+                    </div>
+                    <button @click="openAddItemModal()" class="text-xs bg-jp-text text-white px-3 py-1.5 rounded-full flex items-center gap-1 shadow-lg active:scale-95 transition-transform">
+                        <i class="ph ph-plus"></i> 新增
+                    </button>
+                </div>
+
+                <!-- Weather Card -->
+                <div v-if="currentDayWeather" class="bg-gradient-to-r from-blue-50 to-white rounded-xl p-3 shadow-sm border border-blue-100 flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-3">
+                        <div class="bg-white p-2 rounded-full shadow-sm text-jp-blue">
+                            <i :class="currentDayWeather.icon" class="text-2xl"></i>
+                        </div>
+                        <div>
+                            <div class="flex items-end gap-1.5">
+                                <span class="text-xl font-bold text-jp-text font-serif leading-none">{{ currentDayWeather.maxTemp }}°</span>
+                                <span class="text-xs text-gray-400 mb-0.5">/ {{ currentDayWeather.minTemp }}°C</span>
+                            </div>
+                            <div class="text-[10px] text-gray-500 font-medium">
+                                體感 {{ currentDayWeather.feelsLike }}°C 
+                                <span v-if="currentDayWeather.desc">· {{ currentDayWeather.desc }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-[10px] bg-white px-2 py-1 rounded-full border border-gray-100 text-gray-400 shadow-sm block">
+                            {{ currentDayWeather.rainProb > 20 ? '☔ ' + currentDayWeather.rainProb + '%' : '☀️ 晴朗' }}
+                        </span>
+                    </div>
+                </div>
+
+                <div v-if="currentDayItems.length === 0" class="py-12 text-center text-gray-300">
+                    <i class="ph ph-map-pin text-4xl mb-2 block opacity-50"></i>
+                    安排一點行程吧！
+                </div>
+
+                <!-- Sortable List -->
+                <div ref="sortableList" class="space-y-4 relative pl-4 border-l-2 border-dashed border-gray-200 ml-2 pb-4">
+                    <div v-for="(item, idx) in currentDayItems" :key="item.id" class="relative group cursor-grab active:cursor-grabbing" :data-id="item.id">
+                        <!-- Timeline Dot -->
+                        <div class="absolute -left-[23px] top-4 w-3.5 h-3.5 bg-white border-2 border-jp-yellow rounded-full z-10"></div>
+                        
+                        <div class="bg-white rounded-xl p-4 shadow-card border border-gray-50 hover:shadow-md transition-shadow">
+                            <!-- Drag Handle -->
+                            <div class="absolute right-2 top-2 text-gray-200">
+                                <i class="ph ph-dots-six-vertical"></i>
+                            </div>
+
+                            <div class="flex justify-between items-start pr-4">
+                                <div class="w-full">
+                                    <div class="flex items-center gap-2 mb-1 flex-wrap">
+                                        <span class="bg-jp-bg text-jp-text font-mono text-xs font-bold px-2 py-0.5 rounded border border-gray-100">{{ item.time }}</span>
+                                        <span class="text-[10px] text-white px-2 py-0.5 rounded-full" :class="getCategoryColor(item.category)">
+                                            {{ item.category }}
+                                        </span>
+                                        
+                                        <!-- Transport / Subway Badge -->
+                                        <span v-if="item.station" class="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border" 
+                                              :class="item.station.includes('1') ? 'bg-orange-50 text-metro-orange border-orange-200' : 'bg-emerald-50 text-metro-green border-emerald-200'">
+                                            <i class="ph-fill ph-subway"></i>
+                                            {{ item.station }}
+                                        </span>
+                                    </div>
+
+                                    <h3 class="font-bold text-jp-text text-lg leading-tight">{{ item.location }}</h3>
+                                    
+                                    <!-- Info Details -->
+                                    <div v-if="item.address || item.addressZH || item.addressKR || item.openHours || item.travelTime" class="mt-2 bg-gray-50 rounded-lg p-2 text-xs text-gray-600 space-y-1.5 border border-gray-100">
+                                        <div class="flex flex-wrap gap-x-3 gap-y-1">
+                                            <div v-if="item.openHours" class="flex items-center gap-1">
+                                                <i class="ph-fill ph-clock text-jp-accent"></i>
+                                                <span>{{ item.openHours }}</span>
+                                            </div>
+                                            <div v-if="item.travelTime" class="flex items-center gap-1">
+                                                <i class="ph-fill ph-taxi text-jp-blue"></i>
+                                                <span>約 {{ item.travelTime }}</span>
+                                            </div>
+                                        </div>
+                                        <div v-if="item.addressZH || item.addressKR" class="pt-1.5 mt-1 border-t border-gray-200 space-y-1">
+                                            <div v-if="item.addressZH" class="flex items-start gap-1.5">
+                                                <span class="bg-gray-200 text-gray-600 px-1 rounded text-[10px] font-bold shrink-0 mt-0.5">中</span>
+                                                <span class="text-gray-500 leading-tight">{{ item.addressZH }}</span>
+                                            </div>
+                                            <div v-if="item.addressKR" class="flex items-start gap-1.5">
+                                                <span class="bg-gray-200 text-gray-600 px-1 rounded text-[10px] font-bold shrink-0 mt-0.5">韓</span>
+                                                <span class="text-gray-500 font-sans leading-tight select-all">{{ item.addressKR }}</span>
+                                            </div>
+                                        </div>
+                                        <div v-else-if="item.address" class="flex items-start gap-1 text-[10px] text-gray-400">
+                                            <i class="ph-fill ph-map-pin mt-0.5"></i>
+                                            <span>{{ item.address }}</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Notes -->
+                                    <div v-if="item.note" class="mt-2 text-xs text-gray-500 flex items-start gap-1 bg-amber-50/40 p-2 rounded-lg border border-amber-100/50">
+                                        <i class="ph ph-note-pencil mt-0.5 text-jp-accent"></i>
+                                        <span class="whitespace-pre-line leading-relaxed">{{ item.note }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Actions -->
+                            <div class="flex items-center justify-end gap-2 mt-3 pt-2 border-t border-gray-50 flex-wrap">
+                                <button @click="openAddItemModal(item)" class="text-gray-400 hover:text-blue-500 text-xs flex items-center gap-1">
+                                    <i class="ph ph-pencil-simple"></i> 編輯
+                                </button>
+                                <button @click="deleteItem(item.id)" class="text-gray-400 hover:text-red-400 text-xs flex items-center gap-1">
+                                    <i class="ph ph-trash"></i> 刪除
+                                </button>
+                                <!-- Naver Map Button -->
+                                <button @click="openNaver(item)" class="text-white text-xs font-bold flex items-center gap-1 bg-naver-green px-2.5 py-1 rounded-md shadow-sm active:scale-95">
+                                    <span class="font-black text-xs">N</span> Naver 導航
+                                </button>
+                                <!-- Google Maps Button -->
+                                <button @click="navigateTo(item)" class="text-blue-600 hover:text-blue-700 text-xs font-medium flex items-center gap-1 bg-blue-50 px-2.5 py-1 rounded-md">
+                                    <i class="ph-fill ph-navigation-arrow"></i> Google
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- View: Map -->
+            <div v-else-if="currentTab === 'map'" class="h-full w-full relative">
+                <div id="map" class="w-full h-full z-10 bg-gray-100 min-h-[500px]"></div>
+                
+                <!-- Map Controls Overlay -->
+                <div class="absolute top-4 left-4 z-[500] flex flex-col gap-2">
+                    <div class="bg-white/90 backdrop-blur px-3 py-1.5 rounded-lg shadow text-xs font-medium border border-gray-200 text-gray-600 flex items-center gap-1">
+                        <i class="ph-fill ph-google-logo text-blue-500"></i>
+                        釜山景點地圖 (Day {{ selectedDateIdx + 1 }})
+                    </div>
+
+                    <!-- Naver Map Link -->
+                    <a href="https://map.naver.com" target="_blank" 
+                        class="bg-white px-4 py-2 rounded-xl shadow-lg border border-emerald-500/20 text-emerald-600 font-bold text-xs flex items-center gap-2 active:scale-95 transition-transform"
+                    >
+                        <i class="ph-fill ph-map-pin text-lg"></i>
+                        開啟 Naver Map App (推薦)
+                    </a>
+
+                    <!-- Metro Map Image Button -->
+                    <button @click="showMetroMap = true" 
+                        class="bg-white px-4 py-2 rounded-xl shadow-lg border border-jp-blue/20 text-jp-blue font-bold text-xs flex items-center gap-2 active:scale-95 transition-transform"
+                    >
+                        <i class="ph-fill ph-train-regional text-lg"></i>
+                        釜山地鐵全線圖
+                    </button>
+                </div>
+
+                <!-- Google Maps External Link -->
+                <button @click="openInGoogleMaps" class="absolute bottom-6 left-4 z-[500] bg-white px-4 py-2 rounded-full shadow-float text-jp-text font-bold text-xs flex items-center gap-2 border border-gray-100 active:bg-gray-50">
+                    <i class="ph-fill ph-arrow-square-out text-jp-blue"></i>
+                    開啟 Google Maps App
+                </button>
+
+                <!-- Locate Me -->
+                <button @click="locateMe" class="absolute bottom-6 right-4 z-[500] bg-white p-3 rounded-full shadow-float text-jp-text active:bg-gray-50">
+                    <i class="ph ph-crosshair text-xl"></i>
+                </button>
+            </div>
+
+            <!-- View: Wallet -->
+            <div v-else-if="currentTab === 'wallet'" class="px-4 py-6 space-y-6">
+                <!-- Summary Card -->
+                <div class="bg-jp-text text-white rounded-2xl p-6 shadow-float relative overflow-hidden">
+                    <div class="absolute right-0 top-0 w-32 h-32 bg-jp-yellow rounded-full opacity-10 translate-x-10 -translate-y-10 blur-2xl"></div>
+                    <h3 class="text-sm text-gray-300 font-medium mb-4">總支出統計</h3>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <span class="text-xs text-gray-400 block">韓元總計 (KRW)</span>
+                            <span class="text-2xl font-bold font-mono">₩{{ totalKrw.toLocaleString() }}</span>
+                        </div>
+                        <div class="text-right border-l border-gray-700 pl-4">
+                            <span class="text-xs text-gray-400 block">台幣總計 (TWD)</span>
+                            <span class="text-2xl font-bold font-mono text-jp-yellow">NT${{ totalTwd.toLocaleString() }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Wallet Embedded Converter -->
+                <div class="bg-white rounded-xl p-4 shadow-card border border-gray-50">
+                    <h4 class="text-xs font-bold text-gray-400 mb-2 flex items-center gap-1">
+                        <i class="ph-bold ph-arrows-left-right text-jp-yellow-dark"></i> 快速換算 (KRW ➔ TWD)
+                    </h4>
+                    <div class="flex items-center gap-2">
+                        <div class="flex-1 relative">
+                            <span class="absolute left-3 top-2 text-gray-400 text-xs font-bold">KRW</span>
+                            <input type="number" v-model="walletConverterInput" class="w-full bg-gray-50 pl-12 pr-2 py-2 rounded-lg text-sm font-mono outline-none focus:ring-1 ring-jp-yellow font-bold text-jp-text" placeholder="0">
+                        </div>
+                        <i class="ph-bold ph-arrow-right text-gray-300"></i>
+                        <div class="flex-1 bg-gray-100 p-2 rounded-lg text-sm font-mono text-jp-text font-bold text-right flex justify-between items-center px-3">
+                            <span class="text-gray-400 text-xs">TWD</span>
+                            <span>{{ walletConverterResult }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-between items-center pt-2">
+                    <h3 class="font-bold text-jp-text">每日明細</h3>
+                    <button @click="showExpenseModal = true" class="text-xs bg-jp-yellow text-jp-text font-bold px-3 py-1.5 rounded-full shadow-sm">
+                        + 記帳
+                    </button>
+                </div>
+
+                <div class="space-y-6">
+                    <div v-for="group in expenseGroups" :key="group.dateKey">
+                        <h4 class="text-xs font-bold text-gray-400 mb-2 pl-2 border-l-2 border-jp-accent">{{ group.title }}</h4>
+                        <div class="space-y-2">
+                            <div v-for="exp in group.items" :key="exp.id" class="bg-white p-3 rounded-xl shadow-card border border-gray-50 flex justify-between items-center group relative">
+                                <div class="flex-1">
+                                    <p class="text-sm font-bold text-jp-text">{{ exp.title }}</p>
+                                    <div class="flex items-center gap-2 mt-1">
+                                        <span class="text-[10px] text-white px-1.5 py-0.5 rounded" :class="getCategoryColor(exp.category)">{{ exp.category }}</span>
+                                        <span v-if="exp.note" class="text-[10px] text-gray-400 truncate max-w-[150px] bg-gray-50 px-1.5 py-0.5 rounded">{{ exp.note }}</span>
+                                    </div>
+                                </div>
+                                <div class="text-right mr-6">
+                                    <p class="font-mono font-bold" :class="exp.currency === 'KRW' ? 'text-gray-600' : 'text-jp-text'">
+                                        {{ exp.currency === 'KRW' ? '₩' : 'NT$' }}{{ Number(exp.amount).toLocaleString() }}
+                                    </p>
+                                </div>
+                                <button @click="editExpense(exp)" class="absolute right-2 text-gray-300 hover:text-blue-400 p-1">
+                                    <i class="ph ph-pencil-simple"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- View: Info -->
+            <div v-else-if="currentTab === 'info'" class="px-4 py-6 space-y-4">
+                <h2 class="text-lg font-medium text-jp-text flex items-center gap-2 mb-4">
+                    <i class="ph-fill ph-info text-jp-yellow-dark"></i>
+                    <span class="border-b-4 border-jp-yellow/50 pb-1">資訊 & 備案</span>
+                </h2>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-white p-4 rounded-xl shadow-card border border-gray-50 flex flex-col items-center text-center gap-2">
+                        <i class="ph-fill ph-first-aid text-3xl text-red-500"></i>
+                        <h3 class="font-bold text-sm">緊急救護</h3>
+                        <p class="text-xs text-gray-400">火警/急救: 119</p>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl shadow-card border border-gray-50 flex flex-col items-center text-center gap-2">
+                        <i class="ph-fill ph-police-car text-3xl text-blue-800"></i>
+                        <h3 class="font-bold text-sm">警察求助</h3>
+                        <p class="text-xs text-gray-400">報警: 112 / 觀光諮詢: 1330</p>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="font-bold text-jp-text text-sm">Plan B 備案景點 & 美食</h3>
+                    </div>
+                    <div class="space-y-3">
+                        <div v-for="(info, i) in infoList" :key="i" class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm relative group">
+                            <h4 class="font-bold text-jp-text text-sm mb-2 pr-8">{{ info.name }}</h4>
+                            <div class="space-y-2 text-xs">
+                                <div class="flex items-start gap-2">
+                                    <span class="bg-gray-100 text-gray-500 px-1.5 rounded text-[10px]">中</span>
+                                    <span class="text-gray-600 flex-1">{{ info.addressZH }}</span>
+                                    <button @click="copyToClipboard(info.addressZH)" class="text-gray-300 hover:text-jp-blue px-1"><i class="ph ph-copy"></i></button>
+                                </div>
+                                <div class="flex items-start gap-2">
+                                    <span class="bg-gray-100 text-gray-500 px-1.5 rounded text-[10px]">韓</span>
+                                    <span class="text-gray-500 font-sans select-all flex-1">{{ info.addressKR }}</span>
+                                    <button @click="copyToClipboard(info.addressKR)" class="text-gray-300 hover:text-jp-blue px-1"><i class="ph ph-copy"></i></button>
+                                </div>
+                                <div v-if="info.openHours" class="flex items-start gap-2 mt-1">
+                                    <i class="ph-fill ph-clock text-gray-300 mt-0.5"></i>
+                                    <span class="text-gray-500">{{ info.openHours }}</span>
+                                </div>
+                            </div>
+                            
+                            <div class="flex items-center gap-2 mt-3 pt-2 border-t border-gray-50">
+                                <button @click="addPlanBToSchedule(info)" class="flex-1 bg-jp-blue/10 text-jp-blue py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1 hover:bg-jp-blue/20">
+                                    <i class="ph-bold ph-calendar-plus"></i> 加入行程
+                                </button>
+                                <button @click="openNaverDirect(info.addressKR || info.name)" class="bg-naver-green text-white px-2 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm">
+                                    <span class="font-black text-xs">N</span>
+                                </button>
+                                <button @click="editInfoItem(info, i)" class="text-gray-300 hover:text-blue-400 p-1">
+                                    <i class="ph ph-pencil-simple text-lg"></i>
+                                </button>
+                                <button @click="infoList.splice(i,1)" class="text-gray-300 hover:text-red-400 p-1">
+                                    <i class="ph ph-trash text-lg"></i>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <button @click="addInfoItem" class="w-full py-3 border border-dashed border-gray-300 rounded-xl text-gray-400 text-xs flex items-center justify-center gap-2 hover:bg-gray-50">
+                            <i class="ph ph-plus"></i> 新增備案景點
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- Bottom Nav -->
+        <nav class="bg-white border-t border-gray-100 flex justify-around items-center h-20 pb-4 fixed bottom-0 w-full max-w-[480px] z-40 text-[10px] font-medium text-gray-400">
+            <button @click="switchTab('schedule')" :class="{'text-jp-text font-bold': currentTab === 'schedule'}" class="flex flex-col items-center gap-1 w-16">
+                <i class="ph text-2xl" :class="currentTab === 'schedule' ? 'ph-calendar-check-fill' : 'ph-calendar-check'"></i>
+                行程
+            </button>
+            <button @click="switchTab('map')" :class="{'text-jp-text font-bold': currentTab === 'map'}" class="flex flex-col items-center gap-1 w-16">
+                <i class="ph text-2xl" :class="currentTab === 'map' ? 'ph-map-trifold-fill' : 'ph-map-trifold'"></i>
+                地圖
+            </button>
+            <button @click="switchTab('wallet')" :class="{'text-jp-text font-bold': currentTab === 'wallet'}" class="flex flex-col items-center gap-1 w-16">
+                <i class="ph text-2xl" :class="currentTab === 'wallet' ? 'ph-wallet-fill' : 'ph-wallet'"></i>
+                記帳
+            </button>
+            <button @click="switchTab('info')" :class="{'text-jp-text font-bold': currentTab === 'info'}" class="flex flex-col items-center gap-1 w-16">
+                <i class="ph text-2xl" :class="currentTab === 'info' ? 'ph-info-fill' : 'ph-info'"></i>
+                資訊
+            </button>
+        </nav>
+
+        <!-- Currency Converter Modal -->
+        <transition name="slide-up">
+            <div v-if="showConverterModal" class="fixed inset-0 z-[100] flex items-end sm:items-center justify-center pointer-events-none">
+                <div class="absolute inset-0 bg-black/30 backdrop-blur-sm pointer-events-auto" @click="showConverterModal = false"></div>
+                <div class="bg-white w-full max-w-[480px] rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl z-50 pointer-events-auto">
+                    <div class="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-6"></div>
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="font-bold text-xl text-jp-text flex items-center gap-2">
+                            <i class="ph-fill ph-currency-circle-dollar text-blue-500"></i> 即時韓元換算
+                        </h3>
+                        <button @click="showConverterModal = false" class="text-gray-400 hover:text-gray-600">
+                            <i class="ph ph-x text-xl"></i>
+                        </button>
+                    </div>
+                    <div class="space-y-6">
+                        <div class="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                            <div class="flex items-center justify-between mb-2">
+                                <label class="text-xs font-bold text-gray-500">韓元 (KRW)</label>
+                                <span class="text-xs text-gray-400">輸入金額</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-2xl font-bold text-gray-400">₩</span>
+                                <input type="number" v-model="converterKrw" placeholder="0" class="w-full bg-transparent text-3xl font-bold text-jp-text outline-none font-mono">
+                            </div>
+                        </div>
+                        <div class="flex justify-center -my-3 relative z-10">
+                            <div class="bg-white border border-gray-200 rounded-full p-2 text-gray-400 shadow-sm"><i class="ph-bold ph-arrow-down"></i></div>
+                        </div>
+                        <div class="bg-jp-text rounded-2xl p-4 text-white shadow-lg">
+                            <div class="flex items-center justify-between mb-2">
+                                <label class="text-xs font-bold text-gray-300">台幣 (TWD)</label>
+                                <span class="text-xs text-gray-400">約合</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-2xl font-bold text-gray-400">NT$</span>
+                                <div class="text-3xl font-bold font-mono">{{ convertedTwd }}</div>
+                            </div>
+                        </div>
+                        <div class="text-center text-xs text-gray-400">參考匯率: 1 KRW ≈ {{ exchangeRate }} TWD (₩1,000 ≈ NT${{ (1000 * exchangeRate).toFixed(0) }})</div>
+                    </div>
+                </div>
+            </div>
+        </transition>
+
+        <!-- Metro Map Modal -->
+        <transition name="fade">
+            <div v-if="showMetroMap" class="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 p-4" @click="showMetroMap = false">
+                <div class="relative w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-lg flex flex-col items-center bg-transparent">
+                    <button class="absolute top-2 right-2 bg-black/50 text-white rounded-full p-2 z-10" @click.stop="showMetroMap = false">
+                        <i class="ph ph-x text-2xl"></i>
+                    </button>
+                    
+                    <div class="overflow-auto w-full h-full bg-white flex justify-center items-start">
+                        <div :style="{ transform: `scale(${mapZoom})`, transformOrigin: 'top left', transition: 'transform 0.2s' }" class="relative">
+                            <img src="https://www.humetro.busan.kr/upload/editor/2023/12/20231201_032049877_72004.jpg" 
+                                 alt="釜山地鐵圖" 
+                                 class="max-w-none"
+                                 style="width: 1100px; height: auto;"
+                                 onerror="this.src='https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Busan_Subway_Linemap_ko.svg/1920px-Busan_Subway_Linemap_ko.svg.png';">
+                        </div>
+                    </div>
+
+                    <div class="absolute bottom-6 right-6 flex flex-col gap-2 z-20">
+                        <button @click.stop="mapZoom += 0.2" class="bg-white text-jp-text w-10 h-10 rounded-full shadow-lg flex items-center justify-center text-xl active:bg-gray-100"><i class="ph-bold ph-plus"></i></button>
+                        <button @click.stop="mapZoom = Math.max(0.5, mapZoom - 0.2)" class="bg-white text-jp-text w-10 h-10 rounded-full shadow-lg flex items-center justify-center text-xl active:bg-gray-100"><i class="ph-bold ph-minus"></i></button>
+                    </div>
+                </div>
+            </div>
+        </transition>
+
+        <!-- Add/Edit Item Modal -->
+        <transition name="slide-up">
+            <div v-if="showAddModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center pointer-events-none">
+                <div class="absolute inset-0 bg-black/30 backdrop-blur-sm pointer-events-auto transition-opacity" @click="showAddModal = false"></div>
+                <div class="bg-white w-full max-w-[480px] rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl z-50 pointer-events-auto h-[85vh] overflow-y-auto">
+                    <div class="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-6"></div>
+                    <h3 class="font-bold text-xl mb-6 text-jp-text">{{ isEditing ? '編輯行程' : '新增行程' }}</h3>
+                    
+                    <div class="mb-4">
+                        <label class="block text-xs text-gray-500 mb-1">日期</label>
+                        <select v-model="targetDateIdx" class="w-full bg-gray-50 p-3 rounded-xl outline-none text-sm font-bold text-jp-text">
+                            <option v-for="(day, index) in tripData" :key="index" :value="index">
+                                Day {{ index + 1 }} - {{ getSimpleDate(index) }}
+                            </option>
+                        </select>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">類別</label>
+                            <div class="grid grid-cols-3 gap-2">
+                                <button v-for="cat in categories" :key="cat.val" 
+                                    @click="newItem.category = cat.val"
+                                    class="py-2 rounded-lg text-xs font-medium border transition-colors"
+                                    :class="newItem.category === cat.val ? 'bg-jp-text text-white border-jp-text' : 'bg-white border-gray-200 text-gray-600'"
+                                >
+                                    {{ cat.label }}
+                                </button>
+                            </div>
+                        </div>
+                        <div class="flex gap-2">
+                            <div class="w-1/3">
+                                <label class="block text-xs text-gray-500 mb-1">時間</label>
+                                <input v-model="newItem.time" type="text" placeholder="例如: 10:00" class="w-full bg-gray-50 p-3 rounded-xl outline-none text-sm border border-transparent focus:border-jp-yellow transition-colors">
+                            </div>
+                            <div class="flex-1">
+                                <label class="block text-xs text-gray-500 mb-1">地點 / 行程</label>
+                                <input v-model="newItem.location" type="text" placeholder="輸入地點..." class="w-full bg-gray-50 p-3 rounded-xl outline-none text-sm border border-transparent focus:border-jp-yellow transition-colors">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">最近捷運/交通站點 (選填)</label>
+                            <input v-model="newItem.station" type="text" placeholder="例如: 1號線 凡一站" class="w-full bg-gray-50 p-3 rounded-xl outline-none text-sm border border-transparent focus:border-jp-yellow transition-colors">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">交通與備註</label>
+                            <textarea v-model="newItem.note" rows="3" placeholder="票價、轉乘提醒、美食推薦..." class="w-full bg-gray-50 p-3 rounded-xl outline-none text-sm border border-transparent focus:border-jp-yellow transition-colors resize-none"></textarea>
+                        </div>
+                        
+                        <div class="grid grid-cols-2 gap-2">
+                             <div>
+                                <label class="block text-xs text-gray-500 mb-1">中文名稱/地址 (選填)</label>
+                                <input v-model="newItem.addressZH" type="text" class="w-full bg-gray-50 p-3 rounded-xl outline-none text-xs">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-500 mb-1">韓文名稱/地址 (選填)</label>
+                                <input v-model="newItem.addressKR" type="text" class="w-full bg-gray-50 p-3 rounded-xl outline-none text-xs">
+                            </div>
+                        </div>
+
+                        <button @click="saveItem" class="w-full bg-jp-yellow text-jp-text py-3.5 rounded-xl font-bold shadow-lg mt-4 active:scale-[0.98] transition-transform">
+                            {{ isEditing ? '儲存修改' : '加入行程' }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </transition>
+
+        <!-- Edit Info Modal -->
+        <transition name="slide-up">
+            <div v-if="showInfoModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center pointer-events-none">
+                <div class="absolute inset-0 bg-black/30 backdrop-blur-sm pointer-events-auto" @click="showInfoModal = false"></div>
+                <div class="bg-white w-full max-w-[480px] rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl z-50 pointer-events-auto">
+                    <h3 class="font-bold text-xl mb-6 text-jp-text">編輯備案景點</h3>
+                    <div class="space-y-3">
+                        <input v-model="editingInfo.name" type="text" placeholder="景點名稱" class="w-full bg-gray-50 p-3 rounded-xl outline-none text-sm">
+                        <input v-model="editingInfo.addressZH" type="text" placeholder="中文名稱/地址" class="w-full bg-gray-50 p-3 rounded-xl outline-none text-sm">
+                        <input v-model="editingInfo.addressKR" type="text" placeholder="韓文名稱/地址" class="w-full bg-gray-50 p-3 rounded-xl outline-none text-sm">
+                        <input v-model="editingInfo.openHours" type="text" placeholder="營業時間 (如: 10:00-22:00)" class="w-full bg-gray-50 p-3 rounded-xl outline-none text-sm">
+                        <button @click="saveInfoItem" class="w-full bg-jp-yellow text-jp-text py-3 rounded-xl font-bold shadow-lg">儲存</button>
+                    </div>
+                </div>
+            </div>
+        </transition>
+        
+        <!-- Todo Modal -->
+        <transition name="slide-up">
+            <div v-if="showTodoModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center pointer-events-none">
+                <div class="absolute inset-0 bg-black/30 backdrop-blur-sm pointer-events-auto" @click="showTodoModal = false"></div>
+                <div class="bg-white w-full max-w-[480px] rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl z-50 pointer-events-auto">
+                    <h3 class="font-bold text-xl mb-6 text-jp-text">{{ isEditingTodo ? '編輯待辦' : '新增待辦' }}</h3>
+                    <div class="space-y-3">
+                        <input v-model="newTodo.text" type="text" placeholder="待辦事項內容" class="w-full bg-gray-50 p-3 rounded-xl outline-none text-sm">
+                        
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">分類</label>
+                            <select v-model="newTodo.category" class="w-full bg-gray-50 p-3 rounded-xl outline-none text-sm font-bold text-jp-text">
+                                <option v-for="cat in ['行前準備', '重要文件', '3C產品', '盥洗用品', '個人藥品', '個人衣物', '其他']" :key="cat" :value="cat">
+                                    {{ cat }}
+                                </option>
+                            </select>
+                        </div>
+                        
+                        <button @click="saveTodo" class="w-full bg-jp-yellow text-jp-text py-3 rounded-xl font-bold shadow-lg mt-2">儲存</button>
+                    </div>
+                </div>
+            </div>
+        </transition>
+
+        <!-- Shopping List Modal -->
+        <transition name="slide-up">
+            <div v-if="showShoppingModal" class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center pointer-events-none">
+                <div class="absolute inset-0 bg-black/30 backdrop-blur-sm pointer-events-auto" @click="showShoppingModal = false"></div>
+                <div class="bg-white w-full max-w-[480px] rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl z-50 pointer-events-auto h-[70vh] flex flex-col">
+                    <div class="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-4"></div>
+                    <h3 class="font-bold text-xl mb-4 text-jp-text flex items-center gap-2">
+                        <i class="ph-fill ph-bag text-jp-red"></i> 釜山必買清單
+                    </h3>
+                    
+                    <div class="flex gap-2 mb-4">
+                        <input v-model="newShopItem" @keyup.enter="addShopItem" type="text" placeholder="想買什麼伴手禮？" class="flex-1 bg-gray-50 p-2 rounded-xl outline-none border focus:border-jp-yellow">
+                        <button @click="addShopItem" class="bg-jp-text text-white px-4 rounded-xl"><i class="ph ph-plus"></i></button>
+                    </div>
+
+                    <div class="flex-1 overflow-y-auto space-y-2">
+                        <div v-if="shoppingList.length === 0" class="text-center text-gray-300 py-8">購物清單空空如也</div>
+                        <div v-for="item in shoppingList" :key="item.id" class="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg">
+                            <button @click="item.done = !item.done" :class="item.done ? 'text-jp-red' : 'text-gray-300'">
+                                <i :class="item.done ? 'ph-fill ph-check-square' : 'ph ph-square'"></i>
+                            </button>
+                            <span :class="{'line-through text-gray-300': item.done}" class="flex-1 text-sm">{{ item.text }}</span>
+                            <button @click="shoppingList = shoppingList.filter(i => i.id !== item.id)" class="text-gray-300"><i class="ph ph-trash"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </transition>
+
+        <!-- Expense Modal -->
+        <transition name="slide-up">
+            <div v-if="showExpenseModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center pointer-events-none">
+                <div class="absolute inset-0 bg-black/30 backdrop-blur-sm pointer-events-auto" @click="showExpenseModal = false"></div>
+                <div class="bg-white w-full max-w-[480px] rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl z-50 pointer-events-auto">
+                    <h3 class="font-bold text-lg mb-4 text-jp-text">{{ isEditingExpense ? '編輯支出' : '新增支出' }}</h3>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">日期</label>
+                            <select v-model="newExpense.dayIdx" class="w-full bg-gray-50 p-3 rounded-xl outline-none text-sm font-bold text-jp-text">
+                                <option :value="-1">行前花費</option>
+                                <option v-for="(day, index) in tripData" :key="index" :value="index">
+                                    Day {{ index + 1 }} - {{ getSimpleDate(index) }}
+                                </option>
+                            </select>
+                        </div>
+                        <input v-model="newExpense.title" type="text" placeholder="項目名稱 (如：計程車、烤肉)" class="w-full bg-gray-50 p-3 rounded-xl outline-none text-sm">
+                        
+                        <div class="flex flex-col gap-1">
+                            <div class="flex gap-2">
+                                <select v-model="newExpense.currency" class="bg-gray-50 p-3 rounded-xl outline-none text-sm font-mono">
+                                    <option value="TWD">NT$</option>
+                                    <option value="KRW">₩KRW</option>
+                                </select>
+                                <input v-model="newExpense.amount" type="number" placeholder="金額" class="flex-1 bg-gray-50 p-3 rounded-xl outline-none text-sm font-mono">
+                            </div>
+                            <div v-if="newExpense.currency === 'KRW' && newExpense.amount" class="text-xs text-gray-400 text-right pr-1 animate-pulse">
+                                ≈ NT$ {{ (newExpense.amount * exchangeRate).toFixed(0) }}
+                            </div>
+                        </div>
+
+                        <select v-model="newExpense.category" class="w-full bg-gray-50 p-3 rounded-xl outline-none text-sm">
+                            <option v-for="cat in categories" :key="cat.val" :value="cat.label">{{ cat.label }}</option>
+                        </select>
+                        
+                        <input v-model="newExpense.note" type="text" placeholder="備註 (選填，如：信用卡、現金)" class="w-full bg-gray-50 p-3 rounded-xl outline-none text-sm">
+
+                        <button @click="addExpense" class="w-full bg-jp-yellow text-jp-text py-3 rounded-xl font-bold shadow-lg mt-2">儲存</button>
+                    </div>
+                </div>
+            </div>
+        </transition>
+
+    </div>
+</div>
+
+<script>
+    const { createApp, ref, computed, onMounted, watch, nextTick } = Vue;
+
+    createApp({
+        setup() {
+            const tripTitle = ref('釜山五天四夜之旅 🇰🇷');
+            const tripDays = ref(5);
+            const startDate = new Date('2026-10-07');
+            const currentTab = ref('schedule');
+            const selectedDateIdx = ref(0);
+            
+            const dayThemes = [
+                '南浦洞美食與購物巡禮',
+                '甘川洞小王子 ➔ 海雲台浪漫海景一日遊',
+                '西面田浦早午餐 ➔ 機張動感滑車 ➔ 西面烤肉夜',
+                '影島絕壁白淺灘 ➔ 廣安里無人機燈光秀',
+                '西面最後補貨 ➔ 金海國際機場返台'
+            ];
+
+            // --- Currency Converter (KRW to TWD) ---
+            const showConverterModal = ref(false);
+            const converterKrw = ref('');
+            const exchangeRate = ref(0.024); // 1 KRW ≈ 0.024 TWD
+            const convertedTwd = computed(() => {
+                if(!converterKrw.value) return '0';
+                return (parseFloat(converterKrw.value) * exchangeRate.value).toFixed(0);
+            });
+
+            const walletConverterInput = ref('');
+            const walletConverterResult = computed(() => {
+                if(!walletConverterInput.value) return '0';
+                return (parseFloat(walletConverterInput.value) * exchangeRate.value).toFixed(0);
+            });
+
+            // --- Weather (Busan Latitude/Longitude) ---
+            const weatherLoading = ref(true);
+            const currentTemp = ref('--');
+            const weatherCode = ref(0);
+            
+            // --- Map Logic ---
+            const showMetroMap = ref(false);
+            const mapZoom = ref(1.0);
+
+            const tripData = ref(Array.from({ length: tripDays.value }, (_, i) => ({
+                dayIdx: i,
+                weather: { icon: 'ph-sun text-yellow-500', minTemp: '--', maxTemp: '--', feelsLike: '--', rainProb: 0, desc: '載入中...' },
+                items: []
+            })));
+
+            // --- Day 1: 10/07 (三) ---
+            // 路線：南浦洞商圈（Olive Young、光復路時尚街、BIFF廣場元祖黑糖餅、樂天百貨光復店、味贊王鹽烤肉富平店、南浦蔘雞湯）
+            tripData.value[0].items = [
+                { 
+                    id: 101, 
+                    time: '06:00 - 08:15', 
+                    location: '桃園機場第一航廈報到 ✈️ 釜山', 
+                    category: '航班', 
+                    note: '星宇航空 08:15 起飛 (航程約 2 小時 15 分鐘)。\n行前提醒：記得開通 eSIM、填妥入境檢查表。', 
+                    lat: 25.079, 
+                    lng: 121.234 
+                },
+                { 
+                    id: 102, 
+                    time: '11:30 - 13:30', 
+                    location: '抵達金海機場 (PUS) ➔ 換錢', 
+                    category: '交通', 
+                    note: '11:30 到達釜山。建議在輕軌站旁的 MONEY BOX 換韓元，匯率極佳！', 
+                    lat: 35.1795, 
+                    lng: 128.9382, 
+                    station: '金海機場站', 
+                    addressZH: '金海國際機場 國際線航廈', 
+                    addressKR: '김해국제공항 국제선' 
+                },
+                { 
+                    id: 103, 
+                    time: '14:00 - 17:00', 
+                    location: 'TWOH Hotel (凡一站) 放行李 / 17:00 Check-in', 
+                    category: '住宿', 
+                    note: '住宿：TWOH Hotel (凡一站)。可先至櫃台寄放行李，17:00 正式辦理 Check-in。', 
+                    lat: 35.1388, 
+                    lng: 129.0592, 
+                    station: '1號線 凡一站', 
+                    addressZH: 'TWOH Hotel (地鐵凡一站附近)', 
+                    addressKR: 'TWOH 호텔 범일역' 
+                },
+                { 
+                    id: 104, 
+                    time: '17:00 - 19:00', 
+                    location: '光復路時尚街 & Olive Young & 樂天百貨光復店', 
+                    category: '購物', 
+                    note: '地鐵 1 號線直達南浦站。逛光復路時裝街、Olive Young 補貨美妝；樂天百貨頂樓觀景台可俯瞰釜山港與影島大橋。', 
+                    lat: 35.0986, 
+                    lng: 129.0356, 
+                    station: '1號線 南浦站', 
+                    addressZH: '光復路時尚街 / 樂天百貨光復店', 
+                    addressKR: '광복로패션거리 / 롯데백화점 광복점' 
+                },
+                { 
+                    id: 105, 
+                    time: '19:00 - 22:00', 
+                    location: 'BIFF 廣場覓食 ＆ 南浦洞晚餐', 
+                    category: '美食', 
+                    note: '必吃：BIFF廣場元祖黑糖餅（中區南浦洞五街18-1，營業至23:00）。\n晚餐推薦：味贊王鹽烤肉富平店 (11:30-15:00, 17:00-23:00) 或 南浦蔘雞湯 (11:00-15:00, 16:30-20:20)。', 
+                    lat: 35.0991, 
+                    lng: 129.0298, 
+                    station: '1號線 札嘎其站/南浦站', 
+                    addressZH: 'BIFF廣場 元祖黑糖餅', 
+                    addressKR: 'BIFF 광장 씨앗호떡' 
+                }
+            ];
+
+            // --- Day 2: 10/08 (四) ---
+            // 路線：早上甘川洞文化村（小王子）➔ 中午海雲台（海水浴場、龜南路逛街、名品海雲台蔘雞湯、五福豬肉湯飯、自然島鹽麵包、嚴勇白）➔ 下午/傍晚天空膠囊列車（尾浦➔青沙浦，青沙浦 Liberta 咖啡廳）
+            tripData.value[1].items = [
+                { 
+                    id: 201, 
+                    time: '09:00 - 11:30', 
+                    location: '甘川洞文化村 (和小王子合照)', 
+                    category: '景點', 
+                    note: '早上人潮較少，可輕鬆排隊跟小王子合照、俯瞰繽紛彩繪山城並採買特色紀念品。', 
+                    lat: 35.0975, 
+                    lng: 129.0106, 
+                    station: '土城站轉乘公車或計程車', 
+                    addressZH: '甘川洞文化村', 
+                    addressKR: '감천문화마을' 
+                },
+                { 
+                    id: 202, 
+                    time: '12:00 - 15:00', 
+                    location: '海雲台海水浴場 ＆ 龜南路逛街午餐', 
+                    category: '美食', 
+                    note: '午餐推薦：名品海雲台蔘雞湯 (10:30-15:00, 17:00-21:00)、五福豬肉湯飯 (24小時) 或 嚴勇白豬肉湯飯 (08:00-23:00)。\n必買外帶：自然島鹽麵包 (자연도소금빵, 09:00-22:00)。飯後漫步沙灘往尾浦前進。', 
+                    lat: 35.1610, 
+                    lng: 129.1601, 
+                    station: '2號線 海雲台站', 
+                    addressZH: '海雲台海水浴場 / 龜南路', 
+                    addressKR: '해운대해수욕장 / 구남로 문화의거리' 
+                },
+                { 
+                    id: 203, 
+                    time: '15:00 - 16:30', 
+                    location: '海雲台藍線公園：天空膠囊列車 (尾浦站 ➔ 青沙浦站)', 
+                    category: '景點', 
+                    note: '預約 15:00-16:00 時段 (記得提早排隊)。搭乘復古高空膠囊列車，俯瞰絕美蔚藍海岸線。', 
+                    lat: 35.1584, 
+                    lng: 129.1724, 
+                    station: '尾浦站', 
+                    addressZH: '海雲台藍線公園 尾浦站', 
+                    addressKR: '해운대블루라인파크 미포정거장' 
+                },
+                { 
+                    id: 204, 
+                    time: '16:30 - 19:00', 
+                    location: '青沙浦雙子燈塔 ＆ 景觀咖啡廳 Liberta', 
+                    category: '景點', 
+                    note: '欣賞灌籃高手平交道海景與紅白雙子燈塔夕陽。在海景第一排青沙浦咖啡廳 Liberta 喝咖啡小憩，隨後搭車返回。', 
+                    lat: 35.1618, 
+                    lng: 129.1923, 
+                    station: '青沙浦站', 
+                    addressZH: '青沙浦雙子燈塔 / Liberta 咖啡廳', 
+                    addressKR: '청사포 쌍둥이등대 / 카페 리베르타' 
+                }
+            ];
+
+            // --- Day 3: 10/09 (五) ---
+            // 路線：早上西面田浦（Egg Drop、Bujebi海鮮刀削麵、烤肉的男子）➔ 中午機張斜坡滑車＋海景咖啡廳 Cafe Coralani ➔ 晚上回西面田浦（83haechi 烤肉、松亭3代豬肉湯飯）
+            tripData.value[2].items = [
+                { 
+                    id: 301, 
+                    time: '09:00 - 11:30', 
+                    location: '西面田浦逛街 ＆ 早午餐', 
+                    category: '美食', 
+                    note: '田浦咖啡街散步文青小店。\n早午餐推薦：Egg Drop 三明治 (08:00-19:00)、Bujebi 海鮮蛤蜊刀削麵 (田浦站 7 號出口，서전로 38번길 43-3) 或 烤肉的男子 (11:30-12:30)。', 
+                    lat: 35.1556, 
+                    lng: 129.0645, 
+                    station: '2號線 田浦站 / 1號線 西面站', 
+                    addressZH: '田浦咖啡街 / Bujebi 刀削麵', 
+                    addressKR: '전포카페거리 / 부제비 칼국수' 
+                },
+                { 
+                    id: 302, 
+                    time: '12:00 - 15:30', 
+                    location: '機張 Skyline Luge 斜坡滑車', 
+                    category: '景點', 
+                    note: '搭東海線至「奧西利亞站 (Osiria)」或 Uber 直達。下午人潮相對較少！(營業至 18:00，17:30 最後換票)。旁鄰樂天世界。', 
+                    lat: 35.1965, 
+                    lng: 129.2144, 
+                    station: '東海線 奧西利亞站', 
+                    addressZH: '機張 Skyline Luge 斜坡滑車', 
+                    addressKR: '스카이라인루지 부산' 
+                },
+                { 
+                    id: 303, 
+                    time: '15:30 - 17:30', 
+                    location: '機張無敵海景 Cafe Coralani', 
+                    category: '美食', 
+                    note: '機張絕美階梯懸崖咖啡廳，戶外懶骨頭躺椅面對大海，極致放鬆！', 
+                    lat: 35.2012, 
+                    lng: 129.2291, 
+                    station: '機張搭計程車前往', 
+                    addressZH: '機張 Cafe Coralani', 
+                    addressKR: '카페 코랄라니' 
+                },
+                { 
+                    id: 304, 
+                    time: '18:30 - 21:30', 
+                    location: '西面田浦 83haechi 烤肉 ＆ 地下街逛街', 
+                    category: '美食', 
+                    note: '西面超人氣烤肉 83haechi (16:00-00:30，建議提早抽號碼牌)；備案推薦：松亭3代豬肉湯飯 (24小時營業)。飯後逛西面地下商街後搭 1 號線回凡一站飯店。', 
+                    lat: 35.1552, 
+                    lng: 129.0601, 
+                    station: '1/2號線 西面站', 
+                    addressZH: '83haechi 西面總店 / 松亭3代湯飯', 
+                    addressKR: '83해치 서면본점 / 송정3대국밥' 
+                }
+            ];
+
+            // --- Day 4: 10/10 (六) ---
+            // 路線：早上影島白淺灘文化村（Café Aether/Café age）➔ 中午廣安里（水邊最高豬肉湯飯、Working Holiday 早午餐、海景咖啡 차선책、ORANGE BADA、Millac the Market）➔ 晚上廣安里 M 無人機燈光秀（19:00 / 21:00）
+            tripData.value[3].items = [
+                { 
+                    id: 401, 
+                    time: '09:30 - 12:30', 
+                    location: '影島 白淺灘文化村 (白險灘) 漫步', 
+                    category: '景點', 
+                    note: '沿著絕壁海岸步道看海、穿過海岸隧道拍美照。\n海景咖啡廳：Café Aether 或 Café age (10:00-21:00) 享用早茶看海。', 
+                    lat: 35.0772, 
+                    lng: 129.0435, 
+                    station: '南浦站轉公車或叫 Uber', 
+                    addressZH: '白淺灘文化村 / Café age', 
+                    addressKR: '흰여울문화마을 / 카페 에이지' 
+                },
+                { 
+                    id: 402, 
+                    time: '13:00 - 15:30', 
+                    location: '廣安里 水邊最高豬肉湯飯 ＆ 海灘漫步', 
+                    category: '美食', 
+                    note: '午餐首選：水邊最高豬肉湯飯 民樂總店 (24小時營業，建議 CatchTable 先抽號碼牌)；或 Working Holiday 早午餐 (09:00-22:30)。', 
+                    lat: 35.1541, 
+                    lng: 129.1235, 
+                    station: '2號線 廣安站 / 金蓮山站', 
+                    addressZH: '水邊最高豬肉湯飯 民樂本站', 
+                    addressKR: '수변최고돼지국밥 민락본점' 
+                },
+                { 
+                    id: 403, 
+                    time: '15:30 - 18:30', 
+                    location: '廣安里文創巡禮 (ORANGE BADA & Millac the Market)', 
+                    category: '購物', 
+                    note: '1. ORANGE BADA (오렌지바다)：釜山原創文創小物與明信片\n2. Millac the Market (10:00-24:00)：複合式文創商場，階梯看海喝啤酒\n海景咖啡推薦：차선책 (Gwanganhaebyeon-ro 237 3F 301號)。', 
+                    lat: 35.1548, 
+                    lng: 129.1272, 
+                    station: '民樂水邊公園旁', 
+                    addressZH: 'ORANGE BADA / Millac the Market / 차선책', 
+                    addressKR: '오렌지바다 / 밀락더마켓 / 차선책' 
+                },
+                { 
+                    id: 404, 
+                    time: '19:00 / 21:00', 
+                    location: '廣安里 M 無人機燈光秀 (週六限定)', 
+                    category: '景點', 
+                    note: '週六固定兩場震撼演出 (10月通常為 19:00 與 21:00 各約 10-15 分鐘)。沙灘中央看廣安大橋配無人機秀視野最棒！看完後搭地鐵回凡一站飯店。', 
+                    lat: 35.1532, 
+                    lng: 129.1186, 
+                    station: '2號線 廣安站', 
+                    addressZH: '廣安里海水浴場 沙灘中央', 
+                    addressKR: '광안리해수욕장 드론쇼' 
+                }
+            ];
+
+            // --- Day 5: 10/11 (日) ---
+            // 路線：最晚 12:00 退房 ➔ 西面最後採買逛街 ➔ 16:30 金海機場（18:55 星宇航空返台）
+            tripData.value[4].items = [
+                { 
+                    id: 501, 
+                    time: '10:00 - 12:00', 
+                    location: 'TWOH Hotel 退房 (最晚 12:00 Check-out)', 
+                    category: '住宿', 
+                    note: '辦理退房，行李可先暫寄櫃台，輕裝前往西面最後衝刺。', 
+                    lat: 35.1388, 
+                    lng: 129.0592, 
+                    station: '1號線 凡一站', 
+                    addressZH: 'TWOH Hotel', 
+                    addressKR: 'TWOH 호텔' 
+                },
+                { 
+                    id: 502, 
+                    time: '12:00 - 15:30', 
+                    location: '西面商圈 最後採買逛街 ＆ 午餐', 
+                    category: '購物', 
+                    note: 'Olive Young 美妝最後補貨、西面地下街流行服飾、樂天超市零食泡麵採買，享用道地韓食午餐。', 
+                    lat: 35.1578, 
+                    lng: 129.0594, 
+                    station: '1/2號線 西面站', 
+                    addressZH: '西面商圈 / 西面地下商街', 
+                    addressKR: '서면 중심가' 
+                },
+                { 
+                    id: 503, 
+                    time: '15:30 - 16:30', 
+                    location: '回凡一站拿行李 ➔ 出發前往金海機場', 
+                    category: '交通', 
+                    note: '回飯店提領行李。帶行李建議直接搭計程車/Uber（約 35-40 分鐘省時便利），或搭地鐵至沙上站轉輕軌。務必 16:30 前抵達機場！', 
+                    lat: 35.1795, 
+                    lng: 128.9382, 
+                    station: '金海機場站', 
+                    addressZH: '金海國際機場', 
+                    addressKR: '김해국제공항' 
+                },
+                { 
+                    id: 504, 
+                    time: '16:30 - 20:15', 
+                    location: '金海機場報到 ✈️ 桃園機場第一航廈', 
+                    category: '航班', 
+                    note: '星宇航空 18:55 起飛。預留 2 小時辦理登機、退稅手續、免稅店採買。\n20:15 平安降落桃機 T1，滿載而歸！', 
+                    lat: 35.1795, 
+                    lng: 128.9382, 
+                    station: '金海機場國際線航廈', 
+                    addressZH: '金海國際機場 國際航廈', 
+                    addressKR: '김해국제공항 국제선' 
+                }
+            ];
+
+            const todoList = ref([
+                { id: 1, text: '護照確認 (效期 6 個月以上)', done: true, category: '重要文件' },
+                { id: 2, text: '星宇航空來回機票確認 (JX 1航廈)', done: true, category: '重要文件' },
+                { id: 3, text: 'TWOH Hotel 訂房確認 (凡一站 17:00入住)', done: true, category: '重要文件' },
+                { id: 4, text: '投保旅遊平安險與海外不便險', done: true, category: '行前準備' },
+                { id: 5, text: '購買並設定 韓國 5G eSIM / 網卡', done: false, category: '3C產品' },
+                { id: 6, text: '填寫入境表 / Q-CODE 健康宣告', done: false, category: '行前準備' },
+                { id: 7, text: '預約海雲台天空膠囊列車 (尾浦➔青沙浦 15:00-16:00)', done: false, category: '行前準備' },
+                { id: 8, text: '下載 Naver Map / CatchTable / Uber', done: false, category: '行前準備' },
+                { id: 9, text: '準備 4.8mm 韓國雙圓孔轉接頭 & 行動電源', done: false, category: '3C產品' },
+                { id: 10, text: '薄外套防風防涼 (10月海邊風大)', done: false, category: '個人衣物' }
+            ]);
+
+            const shoppingList = ref([
+                { id: 1, text: '海雲台自然島鹽麵包 (자연도소금빵)', done: false },
+                { id: 2, text: 'ORANGE BADA 廣安里文創明信片', done: false },
+                { id: 3, text: 'Olive Young 美妝精華液與面膜', done: false },
+                { id: 4, text: '樂天超市 韓式海苔 / 辣炒年糕零食', done: false },
+                { id: 5, text: 'BIFF 廣場 元祖黑糖餅', done: false }
+            ]);
+
+            const expenses = ref([
+                { id: 1, dayIdx: -1, title: '星宇航空台北-釜山機票', amount: 12500, currency: 'TWD', category: '航班', note: '含行李' },
+                { id: 2, dayIdx: -1, title: '凡一站 TWOH Hotel 住宿 (4晚)', amount: 9600, currency: 'TWD', category: '住宿', note: '兩人合資' },
+                { id: 3, dayIdx: 0, title: 'MONEY BOX 機場初日換韓元', amount: 200000, currency: 'KRW', category: '其他', note: '公費' }
+            ]);
+
+            const infoList = ref([
+                { name: '海雲台藍線公園 尾浦站', addressZH: '釜山廣域市海雲台區迎月路62號街13', addressKR: '부산 해운대구 달맞이길62번길 13', openHours: '09:00-19:00' },
+                { name: '水邊最高豬肉湯飯 民樂總店', addressZH: '釜山廣域市水營區廣安海邊路370號街9-32', addressKR: '부산 수영구 광안해변로370번길 9-32', openHours: '24小時營業' },
+                { name: '83haechi 西面烤肉總店', addressZH: '釜山廣域市釜山鎮區西田路10號街47', addressKR: '부산 부산진구 서전로10번길 47 1층', openHours: '16:00-00:30' },
+                { name: '味贊王鹽烤肉 富平店', addressZH: '釜山廣域市中區富平洞二街28-2', addressKR: '맛찬들왕소금구이 부평점', openHours: '11:30-15:00, 17:00-23:00' },
+                { name: '南浦蔘雞湯', addressZH: '釜山廣域市中區南浦街16-1', addressKR: '남포삼계탕', openHours: '11:00-15:00, 16:30-20:20' },
+                { name: 'Bujebi 海鮮刀削麵', addressZH: '釜山鎮區西田路38號街43-3 (田浦站7號出口)', addressKR: '부제비 칼국수', openHours: '11:00-20:00' },
+                { name: '機張 Cafe Coralani', addressZH: '釜山廣域市機張郡機張邑機張海岸路32', addressKR: '카페 코랄라니', openHours: '10:00-22:00' },
+                { name: '廣安里 Millac the Market', addressZH: '釜山廣域市水營區民樂水邊路17號街56', addressKR: '부산 수영구 민락수변로17번길 56', openHours: '10:00-24:00' },
+                { name: '廣安里海景咖啡 차선책', addressZH: '釜山水營區廣安海邊路237 3樓301號', addressKR: '차선책 광안리점', openHours: '11:00-22:00' }
+            ]);
+
+            const showAddModal = ref(false);
+            const showShoppingModal = ref(false);
+            const showExpenseModal = ref(false);
+            const showInfoModal = ref(false);
+            const showTodoModal = ref(false);
+            
+            const isEditing = ref(false);
+            const isEditingExpense = ref(false);
+            const isEditingTodo = ref(false);
+            
+            const newItem = ref({ time: '', location: '', category: '景點', note: '', station: '', addressZH: '', addressKR: '' });
+            const editingInfo = ref({});
+            const editingInfoIndex = ref(-1);
+            
+            const newExpense = ref({ id: null, title: '', amount: '', currency: 'KRW', category: '美食', dayIdx: 0, note: '' });
+            const newTodo = ref({ id: null, text: '', category: '其他' });
+            
+            const targetDateIdx = ref(0);
+            const newTodoText = ref('');
+            const newShopItem = ref('');
+
+            const categories = [
+                { val: '景點', label: '景點' }, { val: '交通', label: '交通' },
+                { val: '航班', label: '航班' }, { val: '美食', label: '美食' },
+                { val: '購物', label: '購物' }, { val: '其他', label: '其他' },
+                { val: '住宿', label: '住宿' }
+            ];
+
+            const getDayLabel = (idx) => { 
+                const days = ['週日', '週一', '週二', '週三', '週四', '週五', '週六']; 
+                const d = new Date(startDate); 
+                d.setDate(d.getDate() + idx); 
+                return days[d.getDay()]; 
+            };
+            const getFullDate = (idx) => { 
+                const d = new Date(startDate); 
+                d.setDate(d.getDate() + idx); 
+                return `${d.getMonth()+1}/${d.getDate()} (${getDayLabel(idx)})`; 
+            };
+            const getSimpleDate = (idx) => { 
+                const d = new Date(startDate); 
+                d.setDate(d.getDate() + idx); 
+                return `${d.getMonth()+1}/${d.getDate()}`; 
+            };
+
+            const currentDayItems = computed(() => tripData.value[selectedDateIdx.value]?.items || []);
+            const currentDayWeather = computed(() => tripData.value[selectedDateIdx.value]?.weather);
+
+            const expenseGroups = computed(() => {
+                const groups = {};
+                expenses.value.forEach(exp => { 
+                    if (!groups[exp.dayIdx]) groups[exp.dayIdx] = []; 
+                    groups[exp.dayIdx].push(exp); 
+                });
+                
+                const sortedKeys = Object.keys(groups).sort((a, b) => parseInt(a) - parseInt(b));
+                
+                return sortedKeys.map(key => ({
+                    dateKey: parseInt(key),
+                    title: parseInt(key) === -1 ? '行前花費' : getFullDate(parseInt(key)),
+                    items: groups[key]
+                }));
+            });
+
+            const totalKrw = computed(() => expenses.value.filter(e => e.currency === 'KRW').reduce((acc, e) => acc + parseFloat(e.amount || 0), 0));
+            const totalTwd = computed(() => expenses.value.filter(e => e.currency === 'TWD').reduce((acc, e) => acc + parseFloat(e.amount || 0), 0));
+            
+            const todoGroups = computed(() => {
+                const groups = {};
+                const order = ['行前準備', '重要文件', '3C產品', '盥洗用品', '個人藥品', '個人衣物', '其他'];
+                order.forEach(key => groups[key] = []);
+                todoList.value.forEach(item => {
+                    const cat = item.category || '其他';
+                    if (!groups[cat]) groups[cat] = [];
+                    groups[cat].push(item);
+                });
+                return Object.fromEntries(Object.entries(groups).filter(([k, v]) => v.length > 0));
+            });
+
+            const weatherIcon = computed(() => {
+                const c = weatherCode.value;
+                if (c === 0) return 'ph-sun text-yellow-500';
+                if (c >= 1 && c <= 3) return 'ph-cloud-sun text-gray-500';
+                return 'ph-cloud text-gray-400';
+            });
+
+            const fetchWeather = async () => {
+                try {
+                    const res = await fetch('https://api.open-meteo.com/v1/forecast?latitude=35.1796&longitude=129.0756&daily=weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,precipitation_probability_max&timezone=Asia%2FSeoul&start_date=2026-10-07&end_date=2026-10-11');
+                    const data = await res.json();
+                    if(data.daily && data.daily.time) {
+                        data.daily.time.forEach((t, i) => {
+                            if (tripData.value[i]) {
+                                tripData.value[i].weather = {
+                                    icon: 'ph-sun text-yellow-500', 
+                                    maxTemp: Math.round(data.daily.temperature_2m_max[i]),
+                                    minTemp: Math.round(data.daily.temperature_2m_min[i]),
+                                    feelsLike: Math.round(data.daily.apparent_temperature_max[i]),
+                                    rainProb: data.daily.precipitation_probability_max[i]
+                                };
+                            }
+                        });
+                    }
+                    const curRes = await fetch('https://api.open-meteo.com/v1/forecast?latitude=35.1796&longitude=129.0756&current=temperature_2m,weather_code&timezone=Asia%2FSeoul');
+                    const curData = await curRes.json();
+                    if(curData.current) {
+                        currentTemp.value = Math.round(curData.current.temperature_2m);
+                        weatherCode.value = curData.current.weather_code;
+                        weatherLoading.value = false;
+                    }
+                } catch(e) { 
+                    weatherLoading.value = false; 
+                }
+            };
+
+            let map = null;
+            let markers = [];
+            let myLocationMarker = null;
+
+            const initMap = () => {
+                if (!document.getElementById('map')) return;
+                if (map) map.remove();
+                map = L.map('map', { zoomControl: false }).setView([35.1500, 129.0700], 12);
+                
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { 
+                    attribution: '&copy; OpenStreetMap contributors', 
+                    maxZoom: 19 
+                }).addTo(map);
+
+                updateMapMarkers();
+            };
+
+            const openInGoogleMaps = () => {
+                if (!map) return;
+                const center = map.getCenter();
+                const zoom = map.getZoom();
+                window.open(`https://www.google.com/maps/@${center.lat},${center.lng},${zoom}z`, '_blank');
+            };
+
+            const updateMapMarkers = () => {
+                if (!map) return;
+                markers.forEach(m => map.removeLayer(m));
+                markers = [];
+                const todays = tripData.value[selectedDateIdx.value]?.items || [];
+                const bounds = L.latLngBounds();
+                todays.forEach(item => {
+                    if (item.lat && item.lng) {
+                        const markerHtml = `<div style="background-color: #4A90E2; color: white; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">${markers.length + 1}</div>`;
+                        const icon = L.divIcon({ className: 'custom-pin', html: markerHtml, iconSize: [24, 24], iconAnchor: [12, 12] });
+                        const marker = L.marker([item.lat, item.lng], { icon: icon }).addTo(map).bindPopup(`
+                            <div style="text-align:center;">
+                                <b>${item.location}</b><br>
+                                <span style="font-size:11px; color:#666;">${item.note ? item.note.substring(0, 30) + '...' : ''}</span><br>
+                                <div style="display:flex; gap:4px; justify-content:center; margin-top:5px;">
+                                    <button onclick="window.open('https://map.naver.com/v5/search/${encodeURIComponent(item.addressKR || item.location)}', '_blank')" 
+                                    style="background:#03C75A; color:white; border:none; padding:4px 6px; border-radius:4px; font-size:10px; cursor:pointer; font-weight:bold;">
+                                    Naver
+                                    </button>
+                                    <button onclick="window.open('https://www.google.com/maps/dir/?api=1&destination=${item.lat},${item.lng}', '_blank')" 
+                                    style="background:#4285F4; color:white; border:none; padding:4px 6px; border-radius:4px; font-size:10px; cursor:pointer;">
+                                    Google
+                                    </button>
+                                </div>
+                            </div>
+                        `);
+                        markers.push(marker);
+                        bounds.extend([item.lat, item.lng]);
+                    }
+                });
+                if (todays.length > 0 && todays.some(i => i.lat)) {
+                    map.fitBounds(bounds, { padding: [50, 50] });
+                }
+            };
+
+            const locateMe = () => {
+                if (navigator.geolocation && map) {
+                    navigator.geolocation.getCurrentPosition(pos => {
+                        const { latitude, longitude } = pos.coords;
+                        if (myLocationMarker) map.removeLayer(myLocationMarker);
+                        myLocationMarker = L.marker([latitude, longitude]).addTo(map);
+                        map.setView([latitude, longitude], 15);
+                    });
+                }
+            };
+
+            const editTitle = () => { const t = prompt('修改旅行標題', tripTitle.value); if(t) tripTitle.value = t; };
+            const switchTab = (tab) => currentTab.value = tab;
+            const selectDate = (idx) => { 
+                currentTab.value = 'schedule'; 
+                selectedDateIdx.value = idx; 
+                initSortable(); 
+            };
+            
+            const openAddItemModal = (item = null) => {
+                if (item) {
+                    isEditing.value = true;
+                    newItem.value = JSON.parse(JSON.stringify(item));
+                    targetDateIdx.value = selectedDateIdx.value;
+                } else {
+                    isEditing.value = false;
+                    newItem.value = { time: '10:00', location: '', category: '景點', note: '', station: '', addressZH: '', addressKR: '' };
+                    targetDateIdx.value = selectedDateIdx.value;
+                }
+                showAddModal.value = true;
+            };
+
+            const saveItem = () => {
+                if(!newItem.value.location) return;
+                const targetList = tripData.value[targetDateIdx.value].items;
+                
+                if (isEditing.value) {
+                    const currentList = tripData.value[selectedDateIdx.value].items; 
+                    const idx = currentList.findIndex(i => i.id === newItem.value.id);
+                    if (idx !== -1) {
+                         if (targetDateIdx.value !== selectedDateIdx.value) {
+                             currentList.splice(idx, 1);
+                             targetList.push({ ...newItem.value });
+                         } else {
+                             currentList[idx] = { ...newItem.value };
+                         }
+                    }
+                } else {
+                    const lat = 35.15 + Math.random() * 0.05; 
+                    const lng = 129.05 + Math.random() * 0.05;
+                    targetList.push({ ...newItem.value, id: Date.now(), lat, lng });
+                }
+                
+                showAddModal.value = false; 
+                initSortable();
+            };
+
+            const deleteItem = (id) => { 
+                const items = tripData.value[selectedDateIdx.value].items; 
+                tripData.value[selectedDateIdx.value].items = items.filter(i => i.id !== id); 
+            };
+
+            // 韓國地圖 Naver 開啟
+            const openNaver = (item) => {
+                const query = item.addressKR || item.location;
+                window.open(`https://map.naver.com/v5/search/${encodeURIComponent(query)}`, '_blank');
+            };
+
+            const openNaverDirect = (query) => {
+                window.open(`https://map.naver.com/v5/search/${encodeURIComponent(query)}`, '_blank');
+            };
+
+            // Google Maps 開啟
+            const navigateTo = (item) => {
+                if(item.lat && item.lng) {
+                    window.open(`https://www.google.com/maps/dir/?api=1&destination=${item.lat},${item.lng}`, '_blank');
+                } else {
+                    window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.location)}`, '_blank');
+                }
+            };
+
+            const getCategoryColor = (cat) => {
+                const map = { 
+                    '景點': 'bg-red-400', 
+                    '交通': 'bg-blue-400', 
+                    '航班': 'bg-purple-400', 
+                    '美食': 'bg-orange-400', 
+                    '購物': 'bg-pink-400', 
+                    '住宿': 'bg-green-500', 
+                    '其他': 'bg-gray-400' 
+                };
+                return map[cat] || 'bg-gray-400';
+            };
+
+            // --- Todo Logic ---
+            const openTodoModal = (item = null) => {
+                if (item) {
+                    isEditingTodo.value = true;
+                    newTodo.value = { ...item };
+                } else {
+                    isEditingTodo.value = false;
+                    newTodo.value = { id: null, text: '', category: '行前準備' };
+                }
+                showTodoModal.value = true;
+            };
+
+            const saveTodo = () => {
+                if (!newTodo.value.text) return;
+                if (isEditingTodo.value) {
+                    const idx = todoList.value.findIndex(t => t.id === newTodo.value.id);
+                    if (idx !== -1) todoList.value[idx] = { ...todoList.value[idx], ...newTodo.value };
+                } else {
+                    todoList.value.push({ id: Date.now(), text: newTodo.value.text, done: false, category: newTodo.value.category });
+                }
+                showTodoModal.value = false;
+                newTodoText.value = '';
+            };
+            
+            const addTodo = () => { 
+                if(!newTodoText.value) return; 
+                todoList.value.push({ id: Date.now(), text: newTodoText.value, done: false, category: '其他' }); 
+                newTodoText.value = ''; 
+            };
+            const removeTodo = (id) => todoList.value = todoList.value.filter(t => t.id !== id);
+            const addShopItem = () => { 
+                if(!newShopItem.value) return; 
+                shoppingList.value.push({ id: Date.now(), text: newShopItem.value, done: false }); 
+                newShopItem.value = ''; 
+            };
+            
+            // --- Expense Logic ---
+            const addExpense = () => { 
+                if(!newExpense.value.amount) return;
+                if (isEditingExpense.value) {
+                    const idx = expenses.value.findIndex(e => e.id === newExpense.value.id);
+                    if (idx !== -1) expenses.value[idx] = { ...newExpense.value };
+                } else {
+                    expenses.value.push({ 
+                        id: Date.now(), 
+                        dayIdx: newExpense.value.dayIdx, 
+                        ...newExpense.value 
+                    }); 
+                }
+                showExpenseModal.value = false; 
+            };
+            
+            const editExpense = (exp) => {
+                isEditingExpense.value = true;
+                newExpense.value = { ...exp };
+                showExpenseModal.value = true;
+            };
+
+            // --- Info / Plan B Logic ---
+            const addInfoItem = () => { 
+                editingInfo.value = { name: '', addressZH: '', addressKR: '', openHours: '' };
+                editingInfoIndex.value = -1; 
+                showInfoModal.value = true;
+            };
+            const editInfoItem = (item, index) => {
+                editingInfo.value = { ...item };
+                editingInfoIndex.value = index;
+                showInfoModal.value = true;
+            };
+            const saveInfoItem = () => {
+                if (editingInfoIndex.value === -1) {
+                    infoList.value.push({ ...editingInfo.value });
+                } else {
+                    infoList.value[editingInfoIndex.value] = { ...editingInfo.value };
+                }
+                showInfoModal.value = false;
+            };
+
+            const addPlanBToSchedule = (info) => {
+                newItem.value = {
+                    time: '12:00',
+                    location: info.name,
+                    category: '景點',
+                    note: info.openHours ? `營業時間: ${info.openHours}` : '',
+                    station: '',
+                    addressZH: info.addressZH,
+                    addressKR: info.addressKR
+                };
+                isEditing.value = false;
+                targetDateIdx.value = selectedDateIdx.value;
+                showAddModal.value = true;
+            };
+
+            const copyToClipboard = (text) => {
+                if (!text) return;
+                const textArea = document.createElement("textarea");
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                try {
+                    document.execCommand('copy');
+                    alert('已複製：' + text);
+                } catch (err) { console.error('Copy failed', err); }
+                document.body.removeChild(textArea);
+            };
+
+            // --- LocalStorage Persistence (使用專屬 key 避免舊資料快取覆蓋) ---
+            const STORAGE_KEY = 'busan_trip_data_v2_twoh';
+
+            const saveData = () => {
+                const data = {
+                    tripTitle: tripTitle.value,
+                    tripData: tripData.value,
+                    todoList: todoList.value,
+                    shoppingList: shoppingList.value,
+                    expenses: expenses.value,
+                    infoList: infoList.value
+                };
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+            };
+
+            const loadData = () => {
+                const saved = localStorage.getItem(STORAGE_KEY);
+                if (saved) {
+                    try {
+                        const parsed = JSON.parse(saved);
+                        tripTitle.value = parsed.tripTitle || tripTitle.value;
+                        if (parsed.tripData) tripData.value = parsed.tripData;
+                        if (parsed.todoList) todoList.value = parsed.todoList;
+                        if (parsed.shoppingList) shoppingList.value = parsed.shoppingList;
+                        if (parsed.expenses) expenses.value = parsed.expenses;
+                        if (parsed.infoList) infoList.value = parsed.infoList;
+                    } catch (e) {
+                        console.error('Failed to load saved data', e);
+                    }
+                }
+            };
+
+            const confirmReset = () => {
+                if(confirm('確定要重置為最新版釜山行程（TWOH Hotel 凡一站）嗎？這將清除目前的自訂修改。')) {
+                    localStorage.removeItem(STORAGE_KEY);
+                    localStorage.removeItem('busan_trip_data');
+                    window.location.reload();
+                }
+            };
+
+            const sortableList = ref(null);
+            const initSortable = () => {
+                nextTick(() => {
+                    if (sortableList.value) {
+                        new Sortable(sortableList.value, {
+                            animation: 150, handle: '.group', ghostClass: 'sortable-ghost',
+                            onEnd: (evt) => {
+                                const arr = tripData.value[selectedDateIdx.value].items;
+                                const item = arr.splice(evt.oldIndex, 1)[0];
+                                arr.splice(evt.newIndex, 0, item);
+                            }
+                        });
+                    }
+                });
+            };
+
+            watch(showExpenseModal, (val) => {
+                if (val && !isEditingExpense.value) {
+                    newExpense.value.dayIdx = selectedDateIdx.value;
+                    newExpense.value.title = '';
+                    newExpense.value.amount = '';
+                    newExpense.value.note = '';
+                    newExpense.value.id = null;
+                }
+                if (!val) isEditingExpense.value = false;
+            });
+
+            watch([tripTitle, tripData, todoList, shoppingList, expenses, infoList], () => {
+                saveData();
+            }, { deep: true });
+
+            watch(currentTab, (v) => { 
+                if(v === 'map') nextTick(initMap); 
+                if(v === 'schedule') initSortable(); 
+            });
+            
+            onMounted(() => { 
+                loadData();
+                initSortable(); 
+                fetchWeather(); 
+            });
+
+            return {
+                tripTitle, tripDays, currentTab, selectedDateIdx, tripData, todoList, shoppingList, expenses, infoList,
+                dayThemes, showAddModal, showShoppingModal, showExpenseModal, showInfoModal, showTodoModal,
+                newItem, newTodo, newTodoText, newShopItem, newExpense, categories, targetDateIdx,
+                currentDayItems, currentDayWeather, expenseGroups, totalKrw, totalTwd, editTitle, switchTab, selectDate,
+                openAddItemModal, saveItem, deleteItem, openNaver, openNaverDirect, navigateTo, getCategoryColor, 
+                addTodo, saveTodo, openTodoModal, removeTodo, 
+                addShopItem, addExpense, editExpense,
+                addInfoItem, editInfoItem, saveInfoItem, editingInfo, copyToClipboard, addPlanBToSchedule,
+                locateMe, sortableList, getDayLabel, getFullDate, getSimpleDate, todoGroups,
+                showConverterModal, converterKrw, exchangeRate, convertedTwd, weatherLoading, currentTemp, weatherIcon, walletConverterInput, walletConverterResult,
+                showMetroMap, openInGoogleMaps, isEditing, mapZoom, isEditingExpense, isEditingTodo,
+                confirmReset
+            };
+        }
+    }).mount('#app');
+</script>
+</body>
+</html>
